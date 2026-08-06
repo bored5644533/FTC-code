@@ -44,7 +44,11 @@ def main():
             conversation_history.append({"role": "user", "content": user_input})
 
             # Call the Groq API with loading indicator
-            with console.status("[bold green]Thinking...[/bold green]"):
+            with console.status(
+                "[white]Thinking...[/white]",
+                spinner="dots",
+                spinner_style="white",
+            ):
                 response = client.chat.completions.create(
                     model=model_name,
                     messages=conversation_history
