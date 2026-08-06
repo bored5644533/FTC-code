@@ -1,8 +1,15 @@
-import sys
+import os
+
 from openai import OpenAI
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
+
+from prompt_toolkit import Application
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import HSplit, Layout
+from prompt_toolkit.styles import Style
+from prompt_toolkit.widgets import Frame, TextArea
 
 
 def gradient_text(text, start_color=(30, 144, 255), end_color=(46, 204, 113)):
@@ -30,15 +37,62 @@ def gradient_text(text, start_color=(30, 144, 255), end_color=(46, 204, 113)):
     return text_obj
 
 
+BOX_STYLE = Style.from_dict(
+    {
+        "frame.border": "fg:#1E90FF",
+        "frame.label": "fg:#1E90FF bold",
+        "text-area": "fg:#ffffff",
+    }
+)
+
+
+def boxed_input(title=None):
+    
+    kb = KeyBindings()
+
+    text_area = TextArea(
+        multiline=False,
+        wrap_lines=False,
+        prompt="> ",
+        style="class:text-area",
+    )
+
+    @kb.add("enter")
+    def _submit(event):
+        event.app.exit(result=text_area.text)
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _cancel(event):
+        event.app.exit(result=None)
+
+    frame = Frame(text_area, title=title)
+    layout = Layout(HSplit([frame]))
+
+    app = Application(
+        layout=layout,
+        key_bindings=kb,
+        style=BOX_STYLE,
+        full_screen=False,
+        mouse_support=False,
+    )
+
+    return app.run()
+
+
 def main():
     console = Console()
+    console.clear()  # clear the terminal once on launch
 
-    # Hardcoded Groq API key (temporary usage)
-    api_key = "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"
+    # Hardcoded Groq API key (free tier). Override with GROQ_API_KEY if set.
+    api_key = os.environ.get(
+        "GROQ_API_KEY",
+        "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",
+    )
 
     client = OpenAI(
         base_url="https://api.groq.com/openai/v1",
-        api_key=api_key
+        api_key=api_key,
     )
 
     model_name = "openai/gpt-oss-20b"
@@ -54,32 +108,36 @@ def main():
     )
     console.print(gradient_text(banner))
     console.print(f"Model: [cyan]{model_name}[/cyan]")
-    console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Ctrl+C to stop.\n")
+    console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Esc/Ctrl+C to stop.\n")
 
-    # Maintain conversation history so the model remembers past messages
     conversation_history = [
-        {"role": "system", "content": "You are a helpful assistant for code development for First Tech Challenge (FTC) robotics teams. You are an expert in Java coding and provide optimal solutions to any and all problems"}
+        {
+            "role": "system",
+            "content": (
+                "You are a helpful assistant for code development for First Tech "
+                "Challenge (FTC) robotics teams. You are an expert in Java coding "
+                "and provide optimal solutions to any and all problems"
+            ),
+        }
     ]
 
-    # Continuous Chat Loop (REPL)
     while True:
         try:
-            # Get input directly inside the loop
-            user_input = console.input("\n[bold cyan]You > [/bold cyan]")
+            user_input = boxed_input(title=None)
 
-            # Check for exit commands
+            if user_input is None:  # Esc / Ctrl+C inside the box
+                console.print("\n[bold blue]Goodbye![/bold blue]")
+                break
+
             if user_input.strip().lower() in ["exit", "quit"]:
                 console.print("[bold blue]Goodbye![/bold blue]")
                 break
 
-            # Skip empty inputs
             if not user_input.strip():
                 continue
 
-            # Append user message to history
             conversation_history.append({"role": "user", "content": user_input})
 
-            # Call the Groq API with loading indicator
             with console.status(
                 "[white]Thinking...[/white]",
                 spinner="dots",
@@ -87,23 +145,21 @@ def main():
             ):
                 response = client.chat.completions.create(
                     model=model_name,
-                    messages=conversation_history
+                    messages=conversation_history,
                 )
                 assistant_reply = response.choices[0].message.content
 
-            # Append assistant response to history to maintain context
             conversation_history.append({"role": "assistant", "content": assistant_reply})
 
-            # Print formatted response
             console.print("\n[bold magenta]AI >[/bold magenta]")
             console.print(Markdown(assistant_reply))
 
         except (KeyboardInterrupt, EOFError):
-            # Gracefully handle Ctrl+C or Ctrl+D
             console.print("\n[bold blue]Goodbye![/bold blue]")
             break
         except Exception as e:
             console.print(f"\n[bold red]API Error:[/bold red] {e}")
+
 
 if __name__ == "__main__":
     main()
