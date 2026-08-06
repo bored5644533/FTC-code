@@ -17,7 +17,6 @@ Rules
 5. Keep explanations and examples platform-appropriate for FTC (robot controllers, OpModes, SDK versions).
 
 Practical guidance
-- If proposing code, include only the necessary diffs or snippets, and show where to paste them (file path and function/class context).
 - When suggesting configuration or SDK upgrades, list exact commands and backup instructions.
 - When suggesting debugging steps, provide reproducible steps and what outputs/logs to collect.
 
