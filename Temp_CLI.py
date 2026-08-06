@@ -2,6 +2,33 @@ import sys
 from openai import OpenAI
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.text import Text
+
+
+def gradient_text(text, start_color=(30, 144, 255), end_color=(46, 204, 113)):
+    text_obj = Text()
+    visible_chars = [char for char in text if char != "\n"]
+    visible_index = -1
+
+    for char in text:
+        if char == "\n":
+            text_obj.append("\n")
+            continue
+
+        visible_index += 1
+        if len(visible_chars) == 1:
+            ratio = 0
+        else:
+            ratio = visible_index / (len(visible_chars) - 1)
+
+        r = int(start_color[0] + (end_color[0] - start_color[0]) * ratio)
+        g = int(start_color[1] + (end_color[1] - start_color[1]) * ratio)
+        b = int(start_color[2] + (end_color[2] - start_color[2]) * ratio)
+        color = f"#{r:02x}{g:02x}{b:02x}"
+        text_obj.append(char, style=f"bold {color}")
+
+    return text_obj
+
 
 def main():
     console = Console()
@@ -16,16 +43,16 @@ def main():
 
     model_name = "openai/gpt-oss-20b"
 
-    console.print(
+    banner = (
         "███████╗████████╗ ██████╗      ██████╗ ██████╗ ██████╗ ███████╗\n"
         "██╔════╝╚══██╔══╝██╔════╝     ██╔════╝██╔═══██╗██╔══██╗██╔════╝\n"
         "█████╗     ██║   ██║          ██║     ██║   ██║██║  ██║█████╗  \n"
         "██╔══╝     ██║   ██║          ██║     ██║   ██║██║  ██║██╔══╝  \n"
         "██║        ██║   ╚██████╗     ╚██████╗╚██████╔╝██████╔╝███████╗\n"
         "╚═╝        ╚═╝    ╚═════╝      ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝\n"
-        "\n[ FTC Code CLI v1.0.0 ] - Ready for development",
-        style="bold blue"
+        "\n[ FTC Code CLI v1.0.0 ] - Ready for development"
     )
+    console.print(gradient_text(banner))
     console.print(f"Model: [cyan]{model_name}[/cyan]")
     console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Ctrl+C to stop.\n")
 
