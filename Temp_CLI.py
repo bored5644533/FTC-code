@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sys
 from openai import OpenAI
 from rich.console import Console
@@ -17,8 +16,7 @@ def main():
 
     model_name = "openai/gpt-oss-20b"
 
-    # Welcome banner
-    console.print("[bold green]=== Groq Terminal AI Chat Initialized ===[/bold green]")
+    console.print("[bold green]=== FTC CODE 1.0 ===[/bold green]")
     console.print(f"Model: [cyan]{model_name}[/cyan]")
     console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Ctrl+C to stop.\n")
 
