@@ -16,13 +16,22 @@ def main():
 
     model_name = "openai/gpt-oss-20b"
 
-    console.print("[bold green]=== FTC CODE 1.0 ===[/bold green]")
+    console.print(
+        "███████╗████████╗ ██████╗      ██████╗ ██████╗ ██████╗ ███████╗\n"
+        "██╔════╝╚══██╔══╝██╔════╝     ██╔════╝██╔═══██╗██╔══██╗██╔════╝\n"
+        "█████╗     ██║   ██║          ██║     ██║   ██║██║  ██║█████╗  \n"
+        "██╔══╝     ██║   ██║          ██║     ██║   ██║██║  ██║██╔══╝  \n"
+        "██║        ██║   ╚██████╗     ╚██████╗╚██████╔╝██████╔╝███████╗\n"
+        "╚═╝        ╚═╝    ╚═════╝      ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝\n"
+        "\n[ FTC Code CLI v1.0.0 ] - Ready for development",
+        style="bold blue"
+    )
     console.print(f"Model: [cyan]{model_name}[/cyan]")
     console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Ctrl+C to stop.\n")
 
     # Maintain conversation history so the model remembers past messages
     conversation_history = [
-        {"role": "system", "content": "You are a helpful, technical terminal assistant inside a CLI tool."}
+        {"role": "system", "content": "You are a helpful assistant for code development for First Tech Challenge (FTC) robotics teams. You are an expert in Java coding and provide optimal solutions to any and all problems"}
     ]
 
     # Continuous Chat Loop (REPL)
@@ -33,7 +42,7 @@ def main():
 
             # Check for exit commands
             if user_input.strip().lower() in ["exit", "quit"]:
-                console.print("[bold green]Goodbye![/bold green]")
+                console.print("[bold blue]Goodbye![/bold blue]")
                 break
 
             # Skip empty inputs
@@ -64,7 +73,7 @@ def main():
 
         except (KeyboardInterrupt, EOFError):
             # Gracefully handle Ctrl+C or Ctrl+D
-            console.print("\n[bold green]Goodbye![/bold green]")
+            console.print("\n[bold blue]Goodbye![/bold blue]")
             break
         except Exception as e:
             console.print(f"\n[bold red]API Error:[/bold red] {e}")
