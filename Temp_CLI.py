@@ -104,7 +104,7 @@ def main():
         "██╔══╝     ██║   ██║          ██║     ██║   ██║██║  ██║██╔══╝  \n"
         "██║        ██║   ╚██████╗     ╚██████╗╚██████╔╝██████╔╝███████╗\n"
         "╚═╝        ╚═╝    ╚═════╝      ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝\n"
-        "\n[ FTC Code CLI v1.0.0 ] - Ready for development"
+        "\n[ FTC Code CLI v1.0.0 ] FTC code is neither an official product nor affiliated with First and should not be treated as such"
     )
     console.print(gradient_text(banner))
     console.print(f"Model: [cyan]{model_name}[/cyan]")
