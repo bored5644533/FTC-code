@@ -78,7 +78,19 @@ def boxed_input(title=None):
     )
 
     return app.run()
-
+    
+def load_system_prompt(filepath="Agents.md"):
+    """Load system prompt from Agents.md file."""
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Warning: {filepath} not found. Using default system prompt.")
+        return (
+            "You are a helpful assistant for code development for First Tech "
+            "Challenge (FTC) robotics teams. You are an expert in Java coding "
+            "and provide optimal solutions to any and all problems"
+        )
 
 def main():
     console = Console()
@@ -110,17 +122,13 @@ def main():
     console.print(f"Model: [cyan]{model_name}[/cyan]")
     console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Esc/Ctrl+C to stop.\n")
 
+    system_prompt = load_system_prompt()
     conversation_history = [
         {
             "role": "system",
-            "content": (
-                "You are a helpful assistant for code development for First Tech "
-                "Challenge (FTC) robotics teams. You are an expert in Java coding "
-                "and provide optimal solutions to any and all problems"
-            ),
+            "content": system_prompt,
         }
     ]
-
     while True:
         try:
             user_input = boxed_input(title=None)
