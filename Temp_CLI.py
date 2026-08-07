@@ -1,4 +1,5 @@
 import os
+import re
 
 from openai import OpenAI
 from rich.console import Console
@@ -78,7 +79,39 @@ def boxed_input(title=None):
     )
 
     return app.run()
+
+
+def parse_tool_calls(text):
+    """Extract and parse tool calls from agent response."""
+    tool_pattern = r'(\w+)\s*\(\s*([^)]*)\s*\)'
+    matches = re.finditer(tool_pattern, text)
     
+    tools = []
+    for match in matches:
+        tool_name = match.group(1)
+        if tool_name in ['read', 'write', 'edit', 'commands', 'listFiles', 'writeFile', 'subagent']:
+            tools.append(tool_name)
+    
+    return tools
+
+
+def display_tool_progress(console, tool_name):
+    """Display contextual progress message for tool execution."""
+    messages = {
+        'read': ('📖 Reading file...', 'cyan'),
+        'listFiles': ('📂 Listing files...', 'cyan'),
+        'write': ('🔨 Building...', 'yellow'),
+        'writeFile': ('🔨 Building...', 'yellow'),
+        'edit': ('✏️  Refactoring...', 'yellow'),
+        'commands': ('⚙️  Executing...', 'magenta'),
+        'subagent': ('🤖 Delegating to specialist...', 'cyan'),
+    }
+    
+    if tool_name in messages:
+        msg, color = messages[tool_name]
+        console.print(f'[{color}]{msg}[/{color}]')
+
+
 def load_system_prompt(filepath="Agents.md"):
     """Load system prompt from Agents.md file."""
     try:
@@ -91,6 +124,15 @@ def load_system_prompt(filepath="Agents.md"):
             "Challenge (FTC) robotics teams. You are an expert in Java coding "
             "and provide optimal solutions to any and all problems"
         )
+
+
+def extract_text_content(response_text):
+    """Extract only the text content, filtering out tool call syntax."""
+    # Remove tool call patterns to show only narrative text
+    cleaned = re.sub(r'\w+\s*\(\s*[^)]*\s*\)', '', response_text)
+    cleaned = cleaned.strip()
+    return cleaned if cleaned else None
+
 
 def main():
     console = Console()
@@ -129,6 +171,9 @@ def main():
             "content": system_prompt,
         }
     ]
+    
+    executing_tools = False
+    
     while True:
         try:
             user_input = boxed_input(title=None)
@@ -144,6 +189,7 @@ def main():
             if not user_input.strip():
                 continue
 
+            console.print(f"[bold cyan]You:[/bold cyan] {user_input}")
             conversation_history.append({"role": "user", "content": user_input})
 
             with console.status(
@@ -157,10 +203,28 @@ def main():
                 )
                 assistant_reply = response.choices[0].message.content
 
+            # Detect if agent is using tools
+            detected_tools = parse_tool_calls(assistant_reply)
+            
+            if detected_tools:
+                executing_tools = True
+                console.print("\n[bold cyan]Agent executing:[/bold cyan]")
+                for tool in detected_tools:
+                    display_tool_progress(console, tool)
+                
+                console.print()  # spacing
+            
+            # Extract and display narrative response (non-tool content)
+            narrative = extract_text_content(assistant_reply)
+            if narrative:
+                console.print("\n[bold magenta]AI >[/bold magenta]")
+                console.print(Markdown(narrative))
+            elif detected_tools:
+                # If only tools were called, acknowledge completion
+                console.print("[bold green]✓ Operations completed successfully[/bold green]\n")
+            
+            executing_tools = False
             conversation_history.append({"role": "assistant", "content": assistant_reply})
-
-            console.print("\n[bold magenta]AI >[/bold magenta]")
-            console.print(Markdown(assistant_reply))
 
         except (KeyboardInterrupt, EOFError):
             console.print("\n[bold blue]Goodbye![/bold blue]")
