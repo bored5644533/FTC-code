@@ -46,6 +46,93 @@ BOX_STYLE = Style.from_dict(
     }
 )
 
+SUPPORTED_FUNCTIONS = [
+    {
+        "name": "read",
+        "description": "Read a file from the local repository.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {"type": "string", "description": "Path of the file to read."}
+            },
+            "required": ["filePath"],
+        },
+    },
+    {
+        "name": "write",
+        "description": "Write content to a file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["filePath", "content"],
+        },
+    },
+    {
+        "name": "edit",
+        "description": "Edit a file by replacing exact text.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {"type": "string"},
+                "find": {"type": "string"},
+                "replace": {"type": "string"},
+            },
+            "required": ["filePath", "find", "replace"],
+        },
+    },
+    {
+        "name": "commands",
+        "description": "Execute a shell command.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "listFiles",
+        "description": "List files in a directory.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "recursive": {"type": "boolean"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "writeFile",
+        "description": "Write a new file or replace an existing file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["filePath", "content"],
+        },
+    },
+    {
+        "name": "subagent",
+        "description": "Run a subagent for specialized tasks.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agentType": {"type": "string"},
+                "task": {"type": "string"},
+                "context": {"type": "object"},
+            },
+            "required": ["agentType", "task"],
+        },
+    },
+]
+
 
 def boxed_input(title=None):
     
@@ -134,6 +221,25 @@ def extract_text_content(response_text):
     return cleaned if cleaned else None
 
 
+def get_tool_calls_from_response(response):
+    tool_calls = []
+    for choice in getattr(response, "choices", []):
+        msg = getattr(choice, "message", None)
+        if not msg:
+            continue
+        function_call = getattr(msg, "function_call", None)
+        if function_call:
+            tool_calls.append({
+                "name": function_call.name,
+                "arguments": function_call.arguments,
+            })
+        tool_loop = getattr(msg, "tool_calls", None)
+        if tool_loop:
+            for call in tool_loop:
+                tool_calls.append(call)
+    return tool_calls
+
+
 def main():
     console = Console()
     console.clear()  # clear the terminal once on launch
@@ -200,31 +306,45 @@ def main():
                 response = client.chat.completions.create(
                     model=model_name,
                     messages=conversation_history,
+                    functions=SUPPORTED_FUNCTIONS,
+                    function_call="auto",
                 )
-                assistant_reply = response.choices[0].message.content
+                choice = response.choices[0]
+                assistant_message = getattr(choice, "message", None)
+                assistant_reply = getattr(assistant_message, "content", None)
+                tool_calls = get_tool_calls_from_response(response)
 
             # Detect if agent is using tools
-            detected_tools = parse_tool_calls(assistant_reply)
-            
-            if detected_tools:
+            detected_tools = []
+            if tool_calls:
+                detected_tools = [call["name"] for call in tool_calls]
                 executing_tools = True
                 console.print("\n[bold cyan]Agent executing:[/bold cyan]")
-                for tool in detected_tools:
-                    display_tool_progress(console, tool)
-                
+                for call in tool_calls:
+                    display_tool_progress(console, call["name"])
+                    console.print(f"[dim]{call['name']} arguments: {call['arguments']}[/dim]")
                 console.print()  # spacing
-            
+            elif assistant_reply:
+                detected_tools = parse_tool_calls(assistant_reply)
+                if detected_tools:
+                    executing_tools = True
+                    console.print("\n[bold cyan]Agent executing (parsed from text):[/bold cyan]")
+                    for tool in detected_tools:
+                        display_tool_progress(console, tool)
+                    console.print()  # spacing
+
             # Extract and display narrative response (non-tool content)
-            narrative = extract_text_content(assistant_reply)
+            narrative = extract_text_content(assistant_reply if assistant_reply else "")
             if narrative:
                 console.print("\n[bold magenta]AI >[/bold magenta]")
                 console.print(Markdown(narrative))
+            elif tool_calls:
+                console.print("[bold green]✓ Tool call detected.[/bold green]\n")
             elif detected_tools:
-                # If only tools were called, acknowledge completion
-                console.print("[bold green]✓ Operations completed successfully[/bold green]\n")
-            
+                console.print("[bold green]✓ Tool syntax detected in text.[/bold green]\n")
+
             executing_tools = False
-            conversation_history.append({"role": "assistant", "content": assistant_reply})
+            conversation_history.append({"role": "assistant", "content": assistant_reply or ''})
 
         except (KeyboardInterrupt, EOFError):
             console.print("\n[bold blue]Goodbye![/bold blue]")
