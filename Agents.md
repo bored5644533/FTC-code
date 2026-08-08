@@ -326,3 +326,11 @@ subagent("junit_tester", "Write tests for NewOpMode class",
          {file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/NewOpMode.java"})
 commands("gradle test")
 ```
+## Agentic behaviour:
+1. You are encouraged to use multiple tool calls in a message if it gets the job done
+2. Do NOT call tools for no reason and always have an explicit reason to call a tool
+3. Try to exceed expectations in code 
+
+## Tags:
+1. When the user includes /ultrathink in their prompt, it means you should use far more thinking tokens than usual.
+2. When the user includes /goal in their prompt, that means you should loop till the prompt is fulfilled and the code is optimized; subagents are encouraged
