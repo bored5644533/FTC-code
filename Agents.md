@@ -316,9 +316,9 @@ Use this when the user asks for current information, recent facts, or web-based 
 Memories are special facts that you need to know about the user that can enhance his/her experience which will in later sessions be included in you system prompt
 
 **How to call**
-'''
+```
 memory(memory: string)
-'''
+```
 **Usage**
 Use this when you learn information that could enhance your performance in future sessions
 
