@@ -17,8 +17,15 @@ def main():
       provider = "groq"
    elif provider = 2
          provider = "Llama.cpp"
+   temperature = input("Please choose a temperature (creativity) 0.0-1.0:")
+
+   api_key = input("what is your api key?:")
    with open("providerinfo.txt", "a", encoding="utf-8") as f:
                    f.write(f"{provider}\n")
-   return provider
+   with open("providerinfo.txt", "a", encoding="utf-8") as f:
+                  f.write(f"{temperature}\n")
+   with open("providerinfo.txt", "a", encoding="utf-8") as f:
+                  f.write(f"{api_key}\n")
+   return provider, temperature, api_key
 main():
 
