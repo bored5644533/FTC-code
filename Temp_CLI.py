@@ -2,17 +2,33 @@ import json
 import os
 import re
 import subprocess
+import time
 
-from openai import OpenAI
-from playwright.sync_api import sync_playwright
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
+from LLM_Handling import (
+    BANNER,
+    add_model,
+    create_llm_client,
+    get_llm_settings,
+    list_models,
+    read_model_config,
+    switch_model,
+)
+
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
+
+SHOW_TOOL_DEBUG = os.environ.get("FTCCODE_SHOW_TOOL_DEBUG", "").lower() in {"1", "true", "yes"}
+
 from prompt_toolkit import Application
+from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout
-from prompt_toolkit.layout.processors import Processor, Transformation
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
@@ -49,25 +65,10 @@ def build_box_style(mode):
             "frame.border": f"fg:{color}",
             "frame.label": f"fg:{color} bold",
             "text-area": "fg:#ffffff",
+            "cursor": "reverse",
             "tag": "fg:#FFD700 bold",
         }
     )
-
-
-class TagStripperProcessor(Processor):
-    def apply_transformation(self, transformation_input):
-        text = transformation_input.document.text
-        fragments = []
-        last = 0
-        default_style = ""
-        for match in re.finditer(r'/([A-Za-z_][A-Za-z0-9_]*)', text):
-            if match.start() > last:
-                fragments.append((default_style, text[last:match.start()]))
-            fragments.append(("class:tag", match.group(1)))
-            last = match.end()
-        if last < len(text):
-            fragments.append((default_style, text[last:]))
-        return Transformation(fragments)
 
 
 def format_prompt_tags(text):
@@ -201,7 +202,6 @@ def boxed_input(title=None):
         wrap_lines=False,
         prompt="> ",
         style="class:text-area",
-        input_processors=[TagStripperProcessor()],
     )
 
     def toggle_mode(event):
@@ -225,7 +225,7 @@ def boxed_input(title=None):
         event.app.exit(result=None)
 
     frame = Frame(text_area, title=title)
-    layout = Layout(HSplit([frame]))
+    layout = Layout(HSplit([frame]), focused_element=text_area.control)
 
     app = Application(
         layout=layout,
@@ -233,6 +233,7 @@ def boxed_input(title=None):
         style=build_box_style(mode),
         full_screen=False,
         mouse_support=False,
+        cursor=CursorShape.BLINKING_BLOCK,
     )
 
     return app.run()
@@ -414,6 +415,8 @@ def execute_tool_call(tool_name, arguments):
         query = arguments.get("query", "")
         if not query:
             return "Missing query for web_search()"
+        if sync_playwright is None:
+            return "Web search is unavailable because Playwright is not installed."
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
@@ -457,21 +460,110 @@ def append_function_message(conversation_history, name, arguments):
     )
 
 
+def completion_token_count(response, fallback_text=""):
+    usage = getattr(response, "usage", None)
+    for attr in ("completion_tokens", "output_tokens"):
+        value = getattr(usage, attr, None) if usage else None
+        if isinstance(value, int) and value > 0:
+            return value
+
+    if isinstance(usage, dict):
+        for key in ("completion_tokens", "output_tokens"):
+            value = usage.get(key)
+            if isinstance(value, int) and value > 0:
+                return value
+
+    words = re.findall(r"\S+", fallback_text or "")
+    return max(1, int(len(words) * 1.35)) if words else 0
+
+
+def print_response_stats(console, response, elapsed_seconds, assistant_reply):
+    tokens = completion_token_count(response, assistant_reply)
+    if tokens:
+        tps = tokens / max(elapsed_seconds, 0.001)
+        console.print(f"[dim]Stats: {tokens} output tokens in {elapsed_seconds:.2f}s | {tps:.1f} TPS[/dim]")
+    else:
+        console.print(f"[dim]Stats: {elapsed_seconds:.2f}s | TPS unavailable[/dim]")
+
+
+def thinking_summary():
+    return (
+        "Hidden chain-of-thought is not exposed. Summary: I used the current prompt, "
+        "conversation context, available tool results, and active model settings to produce the answer."
+    )
+
+
+def strip_mode_prefix(text):
+    for prefix in ("/build-mode ", "/plan-mode "):
+        if text.startswith(prefix):
+            return text[len(prefix):].strip()
+    return text.strip()
+
+
+def print_model_list(console):
+    models = list_models()
+    active = get_llm_settings().id
+    console.print("\n[bold cyan]Models[/bold cyan]")
+    for model in models:
+        marker = "*" if model["id"] == active else " "
+        console.print(
+            f"{marker} [bold]{model['id']}[/bold] "
+            f"[dim]({model['provider']} / {model['model']}, temp {model['temperature']})[/dim]"
+        )
+    console.print("[dim]Use /model <id> to switch, or /model add to add another model.[/dim]\n")
+
+
+def handle_cli_command(user_input, console):
+    command = strip_mode_prefix(user_input)
+    if not command.startswith("/"):
+        return None
+
+    lowered = command.lower()
+    if lowered in {"/help", "/?"}:
+        console.print(
+            "\n[bold cyan]Commands[/bold cyan]\n"
+            "[dim]/models[/dim] - list configured models\n"
+            "[dim]/model <id>[/dim] - switch active model\n"
+            "[dim]/model add[/dim] - add a new model\n"
+            "[dim]/thinking[/dim] - show a short reasoning summary note\n"
+        )
+        return "handled"
+
+    if lowered == "/models":
+        print_model_list(console)
+        return "handled"
+
+    if lowered == "/thinking":
+        console.print(f"\n[bold yellow]Thinking Summary[/bold yellow]\n{thinking_summary()}\n")
+        return "handled"
+
+    if lowered == "/model add":
+        model_config = read_model_config()
+        settings = add_model(model_config, make_active=True)
+        console.print(f"[green]Active model changed to {settings.id} ({settings.label} / {settings.model}).[/green]")
+        return settings
+
+    if lowered.startswith("/model "):
+        model_id = command.split(" ", 1)[1].strip()
+        try:
+            settings = switch_model(model_id)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            print_model_list(console)
+            return "handled"
+        console.print(f"[green]Active model changed to {settings.id} ({settings.label} / {settings.model}).[/green]")
+        return settings
+
+    console.print("[yellow]Unknown command. Type /help for CLI commands.[/yellow]")
+    return "handled"
+
+
 def main():
     console = Console()
     console.clear()
 
-    api_key = os.environ.get(
-        "GROQ_API_KEY",
-        "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",
-    )
-
-    client = OpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        api_key=api_key,
-    )
-
-    model_name = "openai/gpt-oss-120b"
+    settings = get_llm_settings()
+    client = create_llm_client(settings)
 
     banner = (
         "███████╗████████╗ ██████╗      ██████╗ ██████╗ ██████╗ ███████╗\n"
@@ -482,9 +574,10 @@ def main():
         "╚═╝        ╚═╝    ╚═════╝      ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝\n"
         "\n[ FTC Code CLI v1.0.0 ] FTC code is neither an official product nor affiliated with First and should not be treated as such"
     )
-    console.print(gradient_text(banner))
-    console.print(f"Model: [cyan]{model_name}[/cyan]")
-    console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], or press Esc/Ctrl+C to stop.\n")
+    console.print(gradient_text(BANNER))
+    console.print(f"Provider: [cyan]{settings.label}[/cyan]")
+    console.print(f"Model: [cyan]{settings.id}[/cyan] [dim]({settings.model})[/dim]")
+    console.print("Type [bold yellow]'exit'[/bold yellow], [bold yellow]'quit'[/bold yellow], [bold yellow]'/help'[/bold yellow], or press Esc/Ctrl+C to stop.\n")
 
     system_prompt = load_system_prompt()
     conversation_history = [{"role": "system", "content": system_prompt}]
@@ -497,11 +590,21 @@ def main():
                 console.print("\n[bold blue]Goodbye![/bold blue]")
                 break
 
-            if user_input.strip().lower() in ["exit", "quit"]:
+            clean_input = strip_mode_prefix(user_input)
+
+            if clean_input.lower() in ["exit", "quit"]:
                 console.print("\n[bold blue]Goodbye![/bold blue]")
                 break
 
-            if not user_input.strip():
+            if not clean_input:
+                continue
+
+            command_result = handle_cli_command(user_input, console)
+            if command_result is not None:
+                if command_result != "handled":
+                    settings = command_result
+                    client = create_llm_client(settings)
+                    console.print(f"[dim]Now using {settings.id} ({settings.model}).[/dim]\n")
                 continue
 
             console.print("[bold cyan]You:[/bold cyan]", format_prompt_tags(user_input))
@@ -513,12 +616,12 @@ def main():
                     spinner="dots",
                     spinner_style="white",
                 ):
-                    response = client.chat.completions.create(
-                        model=model_name,
+                    started_at = time.perf_counter()
+                    response = client.chat_completion(
                         messages=conversation_history,
                         functions=SUPPORTED_FUNCTIONS,
-                        function_call="auto",
                     )
+                    elapsed = time.perf_counter() - started_at
                 choice = response.choices[0]
                 assistant_message = getattr(choice, "message", None)
                 function_call = getattr(assistant_message, "function_call", None)
@@ -532,16 +635,22 @@ def main():
                     elif assistant_reply:
                         console.print("\n[bold magenta]AI >[/bold magenta]")
                         console.print(Markdown(assistant_reply))
+                    print_response_stats(console, response, elapsed, assistant_reply)
+                    console.print("[dim]Thinking: hidden. Type /thinking for a short reasoning summary.[/dim]\n")
                     conversation_history.append({"role": "assistant", "content": assistant_reply})
                     break
 
                 tool_name = function_call.name
                 tool_arguments = function_call.arguments
                 display_tool_progress(console, tool_name)
-                console.print(f"[dim]{tool_name} arguments: {tool_arguments}[/dim]\n")
+                if SHOW_TOOL_DEBUG:
+                    console.print(f"[dim]{tool_name} arguments: {tool_arguments}[/dim]\n")
 
                 tool_result = execute_tool_call(tool_name, tool_arguments)
-                console.print(f"[green]✓ {tool_result}[/green]\n")
+                if SHOW_TOOL_DEBUG:
+                    console.print(f"[green]{tool_result}[/green]\n")
+                else:
+                    console.print(f"[green]Done: {tool_name}[/green]\n")
 
                 append_function_message(conversation_history, tool_name, tool_arguments)
                 conversation_history.append(
